@@ -130,7 +130,7 @@
 		if(SShijack.sd_unlocked)
 			. += "Self Destruct Status: [SShijack.get_sd_eta()]"
 
-var/mob/living/carbon/cortical_borer/B = has_brain_worms()
+	var/mob/living/carbon/cortical_borer/B = has_brain_worms()
 	if(B && (B.borer_flags_status & BORER_STATUS_CONTROLLING))
 
 		var/CR = "Yes"
