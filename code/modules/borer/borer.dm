@@ -1,4 +1,36 @@
-GLOBAL_LIST_EMPTY(living_borers)
+/datum/borer_brainlink
+	var/list/living_borers = list()
+	var/list/datum/borer_chem/borer_chemicals = list()
+	var/cortical_directive = "Seek hosts and spread. Avoid detection where possible. Do not assume control without need." // Default directive.
+
+/datum/borer_brainlink/New()
+	. = ..()
+	borer_chemicals = generate_borer_chems()
+
+GLOBAL_DATUM_INIT(brainlink, /datum/borer_brainlink, new)
+
+/datum/borer_brainlink/proc/generate_borer_chems()
+	var/list/chem_list = list()
+	for(var/chem_datum in subtypesof(/datum/borer_chem/human))
+		chem_list += new chem_datum
+	for(var/chem_datum in subtypesof(/datum/borer_chem/yautja))
+		chem_list += new chem_datum
+	for(var/chem_datum in subtypesof(/datum/borer_chem/universal))
+		chem_list += new chem_datum
+	return chem_list
+
+/datum/borer_brainlink/proc/update_directive(new_directive)
+	cortical_directive = new_directive
+
+	for(var/mob/living/cur_mob in GLOB.brainlink.living_borers)
+		if(cur_mob.client) // Send to borers
+			to_chat(cur_mob, SPAN_XOOC("Cortical Impulse: The Cortical Directive has changed."))
+			to_chat(cur_mob, SPAN_XENOBOLDNOTICE("[new_directive]."))
+
+	for(var/mob/dead/observer/cur_mob in GLOB.observer_list)
+		if(cur_mob.client) // Send to observers
+			to_chat(cur_mob, SPAN_XOOC("Cortical Impulse: The Cortical Directive has changed."))
+			to_chat(cur_mob, SPAN_XENOBOLDNOTICE("[new_directive]."))
 
 /mob/living/captive_brain
 	name = "captive mind"
@@ -134,7 +166,10 @@ GLOBAL_LIST_EMPTY(living_borers)
 	/// Borer status, controlling or docile.
 	var/borer_flags_status //Controlling or Docile. Unsure if I want to put hibernating in here or in actives as active abilities will stop enzyme production.
 
-	var/list/datum/reagent/synthesized_chems
+	/// Whether the borer can create chemicals that are marked as restricted.
+	var/restricted_chems_allowed = FALSE
+
+	var/list/datum/borer_chem/synthesized_chems = list()
 
 	var/current_actions = ACTION_SET_HOSTLESS
 	var/list/actions_hostless = list(
@@ -151,6 +186,7 @@ GLOBAL_LIST_EMPTY(living_borers)
 		/datum/action/innate/borer/leave_body,
 		/datum/action/innate/borer/scan_chems,
 		/datum/action/innate/borer/make_chems,
+		/datum/action/innate/borer/learn_chems,
 	)
 	var/list/actions_xenohost = list(
 		/datum/action/innate/borer/helpme,
@@ -190,7 +226,7 @@ GLOBAL_LIST_EMPTY(living_borers)
 		max_contaminant = max_contaminant * 1.5
 	if((!is_admin_level(z)) && ERT)
 		summon()
-	GLOB.living_borers += src
+	GLOB.brainlink.living_borers += src
 
 /mob/living/carbon/cortical_borer/initialize_pass_flags(datum/pass_flags_container/PF)
 	..()
@@ -214,7 +250,7 @@ GLOBAL_LIST_EMPTY(living_borers)
 			var/mob/living/carbon/human/human_host
 			if(ishuman(host))
 				human_host = host
-			if((human_host.chem_effect_flags & CHEM_EFFECT_ANTI_PARASITE) && (!human_host.reagents.has_reagent("benzyme") || human_host.reagents.has_reagent("bcure")))
+			if((human_host.chem_effect_flags & CHEM_EFFECT_ANTI_PARASITE) && (!human_host.reagents.has_reagent("borerenzyme") || human_host.reagents.has_reagent("borercure")))
 				if(!docile)
 					if(borer_flags_status & BORER_STATUS_CONTROLLING)
 						to_chat(host, SPAN_XENOHIGHDANGER("You feel the flow of a soporific chemical in your host's blood, lulling you into docility."))
@@ -287,7 +323,7 @@ GLOBAL_LIST_EMPTY(living_borers)
 
 /mob/living/carbon/cortical_borer/death()
 	SSmob.living_misc_mobs -= src
-	GLOB.living_borers -= src
+	GLOB.brainlink.living_borers -= src
 	leave_host()
 	. = ..()
 	if(!is_admin_level(z))
@@ -298,11 +334,11 @@ GLOBAL_LIST_EMPTY(living_borers)
 	..()
 	update_icons()
 	SSmob.living_misc_mobs |= src
-	GLOB.living_borers += src
+	GLOB.brainlink.living_borers += src
 
 /mob/living/carbon/cortical_borer/Destroy()
 	SSmob.living_misc_mobs -= src
-	GLOB.living_borers -= src
+	GLOB.brainlink.living_borers -= src
 
 	remove_from_all_mob_huds()
 	if(host)
@@ -361,6 +397,7 @@ GLOBAL_LIST_EMPTY(living_borers)
 		bore_status = "HIBERNATING"
 
 	. += ""
+	. += "Cortical Directive: [GLOB.brainlink.cortical_directive]"
 	. += "Borer: [bore_status]"
 	. += "Name: [real_name]"
 	. += "Can Reproduce: [CR]"
@@ -522,6 +559,18 @@ GLOBAL_LIST_EMPTY(living_borers)
 		to_chat(B, SPAN_WARNING("You cannot do that while hibernating!"))
 		return
 	borerscan(B, B.host)
+
+/datum/action/innate/borer/learn_chems
+	name = "Learn Chemicals"
+	action_icon_state = "borer_human_learn"
+
+/datum/action/innate/borer/learn_chems/action_activate()
+	if(!isborer(owner)) return FALSE
+	var/mob/living/carbon/cortical_borer/B = owner
+	if(B.hibernating)
+		to_chat(B, SPAN_WARNING("You cannot do that while hibernating!"))
+		return
+	B.learn_chemicals()
 
 /datum/action/innate/borer/make_larvae
 	name = "Reproduce"

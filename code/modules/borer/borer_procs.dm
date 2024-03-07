@@ -15,7 +15,7 @@
 	else if(isxeno(host))
 		options += list("Assuming Control","Hibernation","Reproducing")
 	else
-		options += list("Assuming Control","Hibernation","Secreting Chemicals","Reproducing", "Host Death")
+		options += list("Assuming Control","Hibernation","Secreting Chemicals","Learning Chemicals","Reproducing", "Host Death")
 
 	var/choice = tgui_input_list(target, "What would you like help with?", "Help", options, 20 SECONDS)
 
@@ -47,6 +47,8 @@
 			help_message = "Hibernation is how you purify contaminants from your body, allowing you to use your enzymes more freely.\n\nYou can only hibernate whilst inside a host, and it renders you unable to act other than to speak to your host.\n\nYou can freely enter or leave hibernation by clicking the Hibernate button."
 		if("Secreting Chemicals")
 			help_message = "Whilst inside a humanoid host you can secrete chemicals to facilitate your relationship.\nThese can vary from helpful medications to harmful control measures.\n\nSecreting chemicals costs enzymes and if a chemical is impure will cause you to gain contaminant.\nIf you are at, or will go over, your contaminant capacity you will be unable to secrete chemicals.\nPure chemicals are chemicals native to borers such as Cortical Enzyme."
+		if("Learning Chemicals")
+			help_message = "Whilst inside a humanoid host you can learn new chemicals to synthesise, costing [BORER_REPLICATE_COST] Enzymes.\n\nThis requires your host to have a chemical in their blood you do not already know, and for that chemical to be in a state of Overdose.\n\nLearning the chemical has a chance to fail, consuming enzymes but producing no results. This is determined by the number of properties the chemical has.\nSuccessful replication of the chemical will permanently allow you to reproduce it.\nSuccessful or not, attempting to replicate a chemical will consume 90% of the amount in your host's bloodstream."
 		if("Host Death")
 			help_message = "Upon the death of your host you will be forced to release direct control (if you are currently in control), but otherwise will be largely unaffected. If your host becomes permanently unreviavable however, you will be ejected from their corpse."
 	if(!help_message)
@@ -108,7 +110,7 @@
 			if(human_target.reagents.reagent_list.len)
 				to_chat(user, SPAN_XENONOTICE("Subject contains the following reagents:"))
 				for(var/datum/reagent/R in human_target.reagents.reagent_list)
-					to_chat(user, "[R.overdose != 0 && R.volume >= R.overdose && !(R.flags & REAGENT_CANNOT_OVERDOSE) ? SPAN_WARNING("<b>OD: </b>") : ""] <font color='#9773C4'><b>[round(R.volume, 1)]u [R.name]</b></font>")
+					to_chat(user, "[R.overdose != 0 && R.volume >= R.overdose && !(R.flags & REAGENT_CANNOT_OVERDOSE) ? SPAN_WARNING("<b>OD: </b>") : ""] <font color='#9773C4'><b>[R.volume]u [R.name]</b></font>")
 			else
 				to_chat(user, SPAN_XENONOTICE("Subject contains no reagents."))
 	if(isxeno(M))
@@ -444,7 +446,7 @@
 		host.med_hud_set_status()
 		host.special_mob = TRUE
 
-		GLOB.living_borers += host
+		GLOB.brainlink.living_borers += host
 
 		if(src && !src.key)
 			src.key = "@[borer_key]"
@@ -491,7 +493,7 @@
 	if(host_brain)
 		log_interact(host, src, "Borer: [key_name(host)] Took control back")
 		host.special_mob = FALSE
-		GLOB.living_borers -= host
+		GLOB.brainlink.living_borers -= host
 		// host -> self
 		var/h2s_id = host.computer_id
 		var/h2s_ip= host.lastKnownIP
@@ -648,7 +650,8 @@
 			T.add_vomit_floor()
 			brainworm.contaminant = 0
 			var/repro = max(brainworm.can_reproduce - 1, 0)
-			var/ancestors = (brainworm.ancestry += real_name)
+			var/list/ancestors = brainworm.ancestry
+			ancestors += real_name
 			var/mob/living/carbon/cortical_borer/birthed = new /mob/living/carbon/cortical_borer(T, brainworm.generation + 1, TRUE, repro, brainworm.borer_flags_targets, ancestors)
 			brainworm.offspring += birthed.real_name
 			return TRUE
@@ -659,7 +662,13 @@
 		to_chat(src, SPAN_XENOWARNING("You are not allowed to reproduce!"))
 		return FALSE
 
-
+/mob/living/carbon/cortical_borer/proc/get_possible_chems()
+	var/list/possibilities = list()
+	for(var/datum/borer_chem/chem in GLOB.brainlink.borer_chemicals)
+		possibilities += chem
+	for(var/datum/borer_chem/chem in src.synthesized_chems)
+		possibilities += chem
+	return possibilities
 
 /mob/living/carbon/cortical_borer/verb/secrete_chemicals()
 	set category = "Borer"
@@ -684,36 +693,111 @@
 
 	if(ishuman(host))
 		var/mob/living/carbon/human/human_host
-		if(ishuman(host))
-			human_host = host
-		if(isspeciesyautja(human_host))
-			for(var/datum/borer_chem/chem_datum in GLOB.borer_chemicals)
-				if(chem_datum.species != SPECIES_YAUTJA)
+		human_host = host
+		for(var/datum/borer_chem/chem_datum in get_possible_chems())
+			if(chem_datum.species != "Universal")
+				if(isspeciesyautja(human_host))
+					if(chem_datum.species != SPECIES_YAUTJA)
+						continue
+				else if(chem_datum.species != SPECIES_HUMAN)
 					continue
-				var/datum/borer_chem/current_chem = chem_datum
-				var/chem = current_chem.chem_id
-				var/datum/reagent/R = GLOB.chemical_reagents_list[chem]
-				if(R)
-					content += "<tr><td><a href='?_src_=\ref[src];src=\ref[src];borer_use_chem=[chem]'>[current_chem.quantity] units of [current_chem.chem_name] ([current_chem.cost] Enzymes)</a><p>[current_chem.desc]</p></td></tr>"
-		else
-			for(var/datum/borer_chem/chem_datum in GLOB.borer_chemicals)
-				if(chem_datum.species != SPECIES_HUMAN)
-					continue
-				var/datum/borer_chem/current_chem = chem_datum
-				var/chem = current_chem.chem_id
-				var/datum/reagent/R = GLOB.chemical_reagents_list[chem]
-				if(R)
-					content += "<tr><td><a href='?_src_=\ref[src];src=\ref[src];borer_use_chem=[chem]'>[current_chem.quantity] units of [current_chem.chem_name] ([current_chem.cost] Enzymes)</a><p>[current_chem.desc]</p></td></tr>"
+			if(chem_datum.restricted && !restricted_chems_allowed)
+				continue
+			var/datum/borer_chem/current_chem = chem_datum
+			var/chem = current_chem.chem_id
+			var/datum/reagent/R = GLOB.chemical_reagents_list[chem]
+			if(R)
+				content += "<tr><td><a href='?_src_=\ref[src];src=\ref[src];borer_use_chem=[chem]'>[current_chem.quantity] units of [current_chem.chem_name] ([current_chem.cost] Enzymes)</a><p>[current_chem.desc]</p></td></tr>"
 
 	content += "</table>"
 
 	var/html = get_html_template(content)
 
-	usr << browse(null, "window=ViewBorer\ref[src]Chems;size=585x400")
 	usr << browse(html, "window=ViewBorer\ref[src]Chems;size=585x400")
 
 	return TRUE
 
+
+/mob/living/carbon/cortical_borer/verb/learn_chemicals()
+	set category = "Borer"
+	set name = "Replicate Chemical"
+	set desc = "Study a chemical compound for replication."
+
+	if(!host)
+		to_chat(src, SPAN_XENOWARNING("You are not inside a host body."))
+		return FALSE
+
+	if(stat)
+		to_chat(src, SPAN_XENOWARNING("You cannot replicate chemicals in your current state."))
+		return FALSE
+
+	if(docile)
+		to_chat(src, SPAN_XENOWARNING("You are feeling far too docile to do that."))
+		return FALSE
+
+	if(enzymes < BORER_REPLICATE_COST)
+		to_chat(src, SPAN_XENONOTICE("You need at least [BORER_REPLICATE_COST] enzymes to attempt chemical replication!"))
+		return FALSE
+
+	var/list/options = list()
+	var/list/options_datums = list()
+	var/list/existing_chems = list()
+	for(var/datum/borer_chem/existing_chem in GLOB.brainlink.borer_chemicals)
+		if(!(existing_chem.chem_id in existing_chems))
+			existing_chems += existing_chem.chem_id
+	for(var/datum/borer_chem/existing_chem in synthesized_chems)
+		if(!(existing_chem.chem_id in existing_chems))
+			existing_chems += existing_chem.chem_id
+
+	for(var/datum/reagent/potential_chem in host.reagents?.reagent_list)
+		if(potential_chem.id in existing_chems)
+			continue
+		if(potential_chem.volume < potential_chem.overdose)
+			continue
+		options += potential_chem.id
+		options_datums[potential_chem.id] = potential_chem
+
+	if(!options)
+		to_chat(src, SPAN_XENONOTICE("There are no chemicals within your host you are able to replicate!"))
+		return FALSE
+
+	var/choice = tgui_input_list(usr, "Which option do you wish to attempt replication for?", "Choose Option", options, 20 SECONDS)
+	if(!choice)
+		return FALSE
+	if(tgui_alert(usr, "Do you wish to attempt replication of '[choice]'?", "Confirm", list("Yes", "No"), 10 SECONDS) != "Yes")
+		return FALSE
+	var/datum/reagent/chosen = options_datums[choice]
+	if(!chosen)
+		return FALSE
+
+	enzymes -= BORER_REPLICATE_COST
+	var/failure_mult = 0
+	for(var/property in chosen.properties)
+		failure_mult++
+	var/failure_chance = failure_mult * 10
+
+	chosen.volume = (chosen.volume / 10)
+
+	if(prob(failure_chance))
+		to_chat(src, SPAN_XENOWARNING("Replication failed! This chemical has a failure chance of [failure_chance]%!"))
+		return FALSE
+
+	var/datum/borer_chem/synthesised/new_chem = new
+	new_chem.chem_id = chosen.id
+	new_chem.chem_name = chosen.name
+	new_chem.desc = chosen.description
+	var/n_species = host.get_species()
+	if(!n_species)
+		n_species = "UNSET"
+	new_chem.species = n_species
+
+	new_chem.cost = ((5 * failure_chance))
+	new_chem.quantity = (chosen.overdose / 3)
+
+	synthesized_chems += new_chem
+	to_chat(src, SPAN_XENONOTICE("Replication successful!"))
+
+	return TRUE
 
 
 //############# Communication Procs #############
@@ -829,10 +913,15 @@
 		var/topic_chem = href_list["borer_use_chem"]
 		var/datum/borer_chem/current_chem = null
 
-		for(var/datum/borer_chem/chem_datum in GLOB.borer_chemicals)
+		for(var/datum/borer_chem/chem_datum in GLOB.brainlink.borer_chemicals)
 			current_chem = chem_datum
 			if(current_chem.chem_id == topic_chem)
 				break
+		if(current_chem.chem_id != topic_chem)
+			for(var/datum/borer_chem/chem_datum in synthesized_chems)
+				current_chem = chem_datum
+				if(current_chem.chem_id == topic_chem)
+					break
 
 		if(!current_chem || !host || (borer_flags_status & BORER_STATUS_CONTROLLING) || !src || stat)
 			return FALSE
@@ -875,7 +964,7 @@
 
 	msg = process_chat_markup(msg, list("*"))
 
-	for(var/mob/living/cur_mob in GLOB.living_borers)
+	for(var/mob/living/cur_mob in GLOB.brainlink.living_borers)
 		if(cur_mob.client) // Send to borers
 			to_chat(cur_mob, SPAN_XOOC("Cortical Impulse: [msg]"))
 
