@@ -507,12 +507,11 @@
 		M.apply_damage(potency, TOX)
 		var/mob/living/carbon/cortical_borer/player_2 = M.has_brain_worms()
 		if(player_2)
-			if(player_2.borer_flags_status & BORER_STATUS_CONTROLLING)
-				player_2.detach()
-				to_chat(src, SPAN_HIGHDANGER("You relinquish control as the unknown chemical overwhelms you!"))
-
-		player_2.leave_host()
-		to_chat(src, SPAN_HIGHDANGER("The overwhelming flow of powerful chemicals forces you to flee your host!"))
+				if(player_2.borer_flags_status & BORER_STATUS_CONTROLLING)
+					player_2.detach()
+					to_chat(src, SPAN_HIGHDANGER("You relinquish control as the unknown chemical overwhelms you!"))
+				player_2.leave_host()
+				to_chat(src, SPAN_HIGHDANGER("The overwhelming flow of powerful chemicals forces you to flee your host!"))
 
 /datum/chem_property/positive/antiparasitic/process_critical(mob/living/M, potency = 1)
 	M.apply_damage(POTENCY_MULTIPLIER_VHIGH*potency, TOX)
