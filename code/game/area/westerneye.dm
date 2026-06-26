@@ -39,10 +39,8 @@
 	icon_state = "supply"
 	unslashable = TRUE
 	unacidable = TRUE
-	exproof = 1
 	density = 1
 	req_access = null
-	shuttle_tag = "Hangar"
 
 /obj/structure/machinery/computer/shuttle_control/westerneye/maintenance
 	name = "Elevator Console"
@@ -50,10 +48,8 @@
 	icon_state = "shuttle"
 	unslashable = TRUE
 	unacidable = TRUE
-	exproof = 1
 	density = 1
 	req_access = null
-	shuttle_tag = "Maintenance"
 
 /area/westerneye/command/docking_coordination
 	name = "\improper Combat Information Center"
